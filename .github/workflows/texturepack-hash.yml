@@ -9,17 +9,25 @@ jobs:
     if: startsWith(github.event.release.tag_name, 'texturepack-')
     runs-on: k8s
     steps:
-      - name: Wyślij hash paczki na MineZ i Duels
+      - name: Wyślij hash i każ złożyć paczkę na MineZ i Duels
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
-          curl -fsSL -o MineZ.zip "https://github.com/jbwm/MinezTexturepack/releases/download/${TAG}/MineZ.zip"
+          ASSET=$(gh api "repos/jbwm/MinezTexturepack/releases/tags/${TAG}" --jq '[.assets[].name | select(. == "MineZ.zip")][0] // [.assets[].name | select(startswith("MineZ-") and endswith(".zip"))][0] // empty')
+          if [ -z "$ASSET" ]; then
+            echo "Na release nie ma MineZ.zip" >&2
+            exit 1
+          fi
+          curl -fsSL -o MineZ.zip "https://github.com/jbwm/MinezTexturepack/releases/download/${TAG}/${ASSET}"
+          if [ "$ASSET" != "MineZ.zip" ]; then
+            gh release upload "$TAG" MineZ.zip --clobber --repo jbwm/MinezTexturepack
+          fi
           SHA=$(sha1sum MineZ.zip | awk '{print $1}')
           printf '%s\n' "$SHA" > sha1.txt
           gh release upload "$TAG" sha1.txt --clobber --repo jbwm/MinezTexturepack
-          URL="https://github.com/jbwm/MinezTexturepack/releases/download/${TAG}/MineZ.zip"
+          URL="https://github.com/jbwm/MinezTexturepack/releases/latest/download/MineZ.zip"
           printf '%s\n%s\n' "$SHA" "$URL" > body.txt
           curl -fsS -X POST "http://minez-prod-h1:8091/api/texturepack" --data-binary @body.txt
           curl -fsS -X POST "http://duels-prod-h1:8091/api/texturepack" --data-binary @body.txt
