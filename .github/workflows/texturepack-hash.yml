@@ -1,0 +1,26 @@
+name: texturepack-hash
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  push-hash:
+    if: startsWith(github.event.release.tag_name, 'texturepack-')
+    runs-on: k8s
+    steps:
+      - name: Wyślij hash paczki na MineZ
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          curl -fsSL -o MineZ.zip "https://github.com/jbwm/MinezTexturepack/releases/download/${TAG}/MineZ.zip"
+          SHA=$(sha1sum MineZ.zip | awk '{print $1}')
+          printf '%s\n' "$SHA" > sha1.txt
+          gh release upload "$TAG" sha1.txt --clobber --repo jbwm/MinezTexturepack
+          URL="https://github.com/jbwm/MinezTexturepack/releases/download/${TAG}/MineZ.zip"
+          printf '%s\n%s\n' "$SHA" "$URL" > body.txt
+          POD=$(kubectl get pod -n panel -l app=minez-prod-h1 -o jsonpath='{.items[0].status.podIP}')
+          test -n "$POD"
+          curl -fsS -X POST "http://${POD}:8091/api/texturepack" --data-binary @body.txt
